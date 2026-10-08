@@ -1,75 +1,91 @@
-name: Build VANY OS (Android 8.0 Oreo)
+name: Build LineageOS 15.1
 
 on:
   workflow_dispatch:
-    inputs:
-      MANIFEST_URL:
-        description: 'Repo Manifest URL (e.g. LineageOS or AOSP)'
-        required: true
-        default: 'https://github.com/LineageOS/android'
-      MANIFEST_BRANCH:
-        description: 'Branch Name (e.g. lineage-15.1 for Android 8.1)'
-        required: true
-        default: 'lineage-15.1'
-      DEVICE_NAME:
-        description: 'Device Codename (e.g. dumpling)'
-        required: true
-        default: 'dumpling'
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-    steps:
-      - name: Free Up Disk Space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: true
-          android: false
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: true
-          swap-storage: false
 
-      - name: Maximize Build Space
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Free Disk Space (Clean Runner Environment)
         run: |
           sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
-          sudo rm -rf "/usr/local/share/boost"
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/graalvm/
+          sudo rm -rf /usr/local/share/powershell
+          sudo rm -rf /usr/local/share/chromium
+          docker image prune --all --force || true
+          sudo apt-get clean
           df -h
+
+      - name: Maximize Build Space
+        uses: easimon/maximize-build-space@v5
+        with:
+          root-reserve-mb: 2048
+          temp-reserve-mb: 2048
+          swap-size-mb: 1024
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
 
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32z1-dev libelf-dev libgl1-mesa-dev libx11-dev libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zlib1g-dev python3 openjdk-8-jdk wget repo
+          sudo apt-get install -y bc build-essential ccache flex bison gperf libxml2-utils \
+            curl zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 lib32ncurses5-dev \
+            x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev xsltproc unzip python2
 
-      - name: Configure Git
+      - name: Setup Repo Tool
         run: |
-          git config --global user.name "Muaj"
-          git config --global user.email "muaj@vanyos.com"
+          mkdir -p ~/bin
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          chmod a+x ~/bin/repo
+          echo "$HOME/bin" >> $GITHUB_PATH
 
-      - name: Initialize Repo and Sync
+      - name: Initialize and Sync LineageOS Source
         run: |
-          mkdir -p ~/android/vany
-          cd ~/android/vany
-          repo init -u ${{ github.event.inputs.MANIFEST_URL }} -b ${{ github.event.inputs.MANIFEST_BRANCH }} --depth=1
-          repo sync -c -j8 --force-sync --no-clone-bundle --no-tags
+          mkdir -p ~/rom
+          cd ~/rom
+          repo init -u https://github.com/LineageOS/android.git -b cm-14.1 --git-lfs --depth=1
+          repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
 
-      - name: Setup Device Tree and VANY Customizations
+      - name: Setup Device Tree & Build Environment
         run: |
-          cd ~/android/vany
-          echo "Placing custom VANY bootanimation, settings, and device tree..."
-
-      - name: Start Building VANY OS
-        run: |
-          cd ~/android/vany
+          cd ~/rom
           source build/envsetup.sh
-          breakfast ${{ github.event.inputs.DEVICE_NAME }} userdebug
-          mka bacon -j$(nproc)
+          lunch lineage_vany-userdebug || lunch lineage_arm64-userdebug
 
-      - name: Upload Built VANY OS ROM
+      - name: Compile System Image
+        run: |
+          cd ~/rom
+          make systemimage -j$(nproc --all)
+
+      - name: Compress Output Artifact
+        run: |
+          cd ~/rom/out/target/product/*
+          if [ -f system.img ]; then
+            zip -9 ~/vany-system.zip system.img
+          else
+            echo "system.img not found!" && exit 1
+          fi
+
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VANY-OS-${{ github.event.inputs.DEVICE_NAME }}-Android8
-          path: ~/android/vany/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/*.zip
+          name: vany-system-image
+          path: ~/vany-system.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ~/vany-system.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
