@@ -11,15 +11,21 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Maximize Build Space
-        uses: easimon/maximize-build-space@v5
-        with:
-          root-reserve-mb: 1024
-          temp-reserve-mb: 1024
-          swap-size-mb: 1024
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
+      - name: Free Disk Space Direct Cleanup
+        run: |
+          echo "Cleaning up disk space..."
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/graalvm/
+          sudo rm -rf /usr/local/share/powershell
+          sudo rm -rf /usr/local/share/chromium
+          sudo rm -rf /usr/local/rubies
+          sudo apt-get clean
+          docker image prune --all --force || true
+          df -h
 
       - name: Install Dependencies
         run: |
@@ -75,3 +81,4 @@ jobs:
           files: ~/vany-system.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
