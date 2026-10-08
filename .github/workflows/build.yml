@@ -11,31 +11,17 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Free Disk Space (Clean Runner Environment)
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/share/boost
-          sudo rm -rf /usr/share/swift
-          sudo rm -rf /usr/local/graalvm/
-          sudo rm -rf /usr/local/share/powershell
-          sudo rm -rf /usr/local/share/chromium
-          docker image prune --all --force || true
-          sudo apt-get clean
-          df -h
-
       - name: Maximize Build Space
         uses: easimon/maximize-build-space@v5
         with:
-          root-reserve-mb: 2048
-          temp-reserve-mb: 2048
+          root-reserve-mb: 1024
+          temp-reserve-mb: 1024
           swap-size-mb: 1024
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
 
-      - name: Install Build Dependencies
+      - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y bc build-essential ccache flex bison gperf libxml2-utils \
@@ -49,31 +35,31 @@ jobs:
           chmod a+x ~/bin/repo
           echo "$HOME/bin" >> $GITHUB_PATH
 
-      - name: Initialize and Sync LineageOS Source
+      - name: Sync LineageOS Source
         run: |
           mkdir -p ~/rom
           cd ~/rom
           repo init -u https://github.com/LineageOS/android.git -b cm-14.1 --git-lfs --depth=1
           repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
 
-      - name: Setup Device Tree & Build Environment
+      - name: Setup Environment and Lunch
         run: |
           cd ~/rom
           source build/envsetup.sh
           lunch lineage_vany-userdebug || lunch lineage_arm64-userdebug
 
-      - name: Compile System Image
+      - name: Compile ROM
         run: |
           cd ~/rom
           make systemimage -j$(nproc --all)
 
-      - name: Compress Output Artifact
+      - name: Package Output
         run: |
           cd ~/rom/out/target/product/*
           if [ -f system.img ]; then
             zip -9 ~/vany-system.zip system.img
           else
-            echo "system.img not found!" && exit 1
+            echo "Build failed: system.img not generated" && exit 1
           fi
 
       - name: Upload Artifact
