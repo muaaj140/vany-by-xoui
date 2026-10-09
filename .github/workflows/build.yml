@@ -1,120 +1,51 @@
-name: Build VANY Custom ROM
+name: Build VANY ROM
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 360
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Deep Cleanup Runner Disk Space
+      - name: Clear Space & Clean Runner
         run: |
-          echo "Clearing non-essential build packages..."
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/share/boost
-          sudo rm -rf /usr/share/swift
-          sudo rm -rf /usr/local/graalvm/
-          sudo rm -rf /usr/local/share/powershell
-          sudo rm -rf /usr/local/share/chromium
-          sudo rm -rf /usr/local/rubies
-          sudo apt-get clean
-          docker image prune --all --force || true
+          echo "Clearing non-essential build packages to save space..."
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost
           df -h
 
-      - name: Install Build Dependencies & OpenJDK 8
+      - name: Install Dependencies & Universal Ncurses Fix
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc build-essential ccache flex bison gperf libxml2-utils \
-            curl zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 lib32ncurses5-dev \
-            x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev xsltproc unzip python2 \
-            openjdk-8-jdk
+          sudo apt-get install -y \
+            bc build-essential ccache curl flex bison gperf libxml2-utils \
+            unzip zlib1g-dev lib32z1-dev lib32ncurses-dev \
+            libgl1-mesa-dev xsltproc openjdk-8-jdk python2 python2-minimal \
+            libncurses6 libtinfo6 lib32ncurses6 lib32tinfo6 || true
 
-      - name: Set Java 8 as Default JDK
-        run: |
-          sudo update-java-alternatives -s java-1.8.0-openjdk-amd64 || true
-          export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
-          echo "JAVA_HOME=$JAVA_HOME" >> $GITHUB_ENV
-          echo "$JAVA_HOME/bin" >> $GITHUB_PATH
-
-      - name: Setup Repo Tool
-        run: |
-          mkdir -p ~/bin
-          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-          chmod a+x ~/bin/repo
-          echo "$HOME/bin" >> $GITHUB_PATH
-
-      - name: Non-Interactive LineageOS Source Sync
-        run: |
-          mkdir -p ~/rom
-          cd ~/rom
-          repo init -u https://github.com/LineageOS/android.git -b cm-14.1 --git-lfs --depth=1
+          # Direct Global Symlink for Clang Toolchain (Fixes Error 127 permanently)
+          sudo ln -sf /lib/x86_64-linux-gnu/libncurses.so.6 /usr/lib/libncurses.so.5
+          sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/libtinfo.so.5
+          sudo ln -sf /lib/x86_64-linux-gnu/libncurses.so.6 /lib/x86_64-linux-gnu/libncurses.so.5
+          sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5
           
-          # Setup safe local manifest
-          mkdir -p .repo/local_manifests
-          cat > .repo/local_manifests/roomservice.xml << 'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <manifest>
-            <project path="device/vany/vany" name="muaaj140/android_device_vany" remote="github" revision="cm-14.1" />
-          </manifest>
-          EOF
-          
-          echo "Syncing source code with interactive prompt disabled..."
-          export GIT_TERMINAL_PROMPT=0
-          repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags || \
-          (rm -rf .repo/local_manifests/roomservice.xml && repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags)
+          # For multiarch support
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libncurses.so.6 /usr/lib/x86_64-linux-gnu/libncurses.so.5
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5
 
-      - name: Configure and Target Selection
+          echo "Ncurses v5 legacy bridges successfully linked."
+
+      - name: Set Up Python 2 Symlink
         run: |
-          cd ~/rom
-          export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
-          export PATH=$JAVA_HOME/bin:$PATH
+          sudo ln -sf /usr/bin/python2 /usr/bin/python
+          echo "Python 2 set as default."
+
+      - name: Run VANY ROM Build
+        run: |
+          echo "Starting VANY ROM Compilation..."
           source build/envsetup.sh
-          
-          echo "Selecting architecture target..."
-          lunch lineage_vany-userdebug || \
-          lunch aosp_arm64-userdebug || \
-          lunch cm_arm64-userdebug
-
-      - name: Compile System Image
-        run: |
-          cd ~/rom
-          export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
-          export PATH=$JAVA_HOME/bin:$PATH
-          make systemimage -j$(nproc --all)
-
-      - name: Compress Output System Package
-        run: |
-          cd ~/rom/out/target/product/*
-          if [ -f system.img ]; then
-            zip -9 ~/vany-system.zip system.img
-          else
-            echo "Build failed: system.img file not found" && exit 1
-          fi
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: vany-system-image
-          path: ~/vany-system.zip
-          retention-days: 7
-
-      - name: Create Permanent GitHub Release
-        uses: softprops/action-gh-release@v2
-        if: always() && hashFiles('/home/runner/vany-system.zip') != ''
-        with:
-          tag_name: "vany-os-build-${{ github.run_number }}"
-          name: "VANY OS ROM Build #${{ github.run_number }}"
-          body: "Automated Build generated for VANY OS (LineageOS 15.1 Base)."
-          files: ~/vany-system.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          lunch aosp_arm-eng
+          make -j$(nproc)
