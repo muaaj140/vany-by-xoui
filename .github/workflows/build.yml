@@ -1,4 +1,4 @@
-name: Build VANY ROM
+name: Build VANY KitKat ROM
 
 on:
   workflow_dispatch:
@@ -13,49 +13,41 @@ jobs:
 
       - name: Clear Space & Clean Runner
         run: |
-          echo "Clearing non-essential build packages to save space..."
+          echo "ডিস্ক স্পেস খালি করা হচ্ছে..."
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost
           df -h
 
-      - name: Install Dependencies & Universal Ncurses Fix
+      - name: Install KitKat Dependencies & Legacy Fixes
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             bc build-essential ccache curl flex bison gperf libxml2-utils \
             unzip zlib1g-dev lib32z1-dev lib32ncurses-dev repo git \
             libgl1-mesa-dev xsltproc openjdk-8-jdk python2 python2-minimal \
-            libncurses6 libtinfo6 lib32ncurses6 lib32tinfo6 || true
+            libncurses5 libtinfo5 lib32ncurses5 lib32tinfo6 || true
 
-          # Direct Global Symlink for Clang Toolchain (Fixes Error 127 permanently)
-          sudo ln -sf /usr/lib/x86_64-linux-gnu/libncurses.so.6 /usr/lib/libncurses.so.5
-          sudo ln -sf /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/libtinfo.so.5
-          sudo ln -sf /lib/x86_64-linux-gnu/libncurses.so.6 /lib/x86_64-linux-gnu/libncurses.so.5
-          sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5
           sudo ln -sf /usr/lib/x86_64-linux-gnu/libncurses.so.6 /usr/lib/x86_64-linux-gnu/libncurses.so.5
           sudo ln -sf /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5
-
-          echo "Ncurses v5 legacy bridges successfully linked."
+          echo "ডিপেনডেন্সি এবং লিগেসি লাইব্রেরি প্রস্তুত।"
 
       - name: Set Up Python 2 Symlink
         run: |
           sudo ln -sf /usr/bin/python2 /usr/bin/python
-          echo "Python 2 set as default."
+          echo "পাইথন ২ সেট করা হয়েছে।"
 
-      - name: Initialize Repo and Sync Source
+      - name: Sync and Build VANY KitKat ROM (Combined Step)
         run: |
-          mkdir -p /home/runner/rom
-          cd /home/runner/rom
-          git config --global user.name "VANY Builder"
-          git config --global user.email "builder@vany.os"
+          mkdir -p /home/runner/kitkat_rom
+          cd /home/runner/kitkat_rom
+          git config --global user.name "VANY KitKat Builder"
+          git config --global user.email "kitkat@vany.os"
           
-          # আপনার কাস্টম ম্যানিফেস্ট বা সোর্স অনুযায়ী রিপো ইনিট ও সিঙ্ক কমান্ড
-          # repo init -u https://github.com/LineageOS/android.git -b cm-14.1
-          # repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune -j$(nproc)
-
-      - name: Run VANY ROM Build
-        run: |
-          cd /home/runner/rom
-          echo "Starting VANY ROM Compilation..."
+          echo "সোর্স কোড ইনিশিয়ালাইজ ও সিঙ্ক শুরু হচ্ছে (এটি কিছুটা সময় নিতে পারে)..."
+          repo init -u https://github.com/CyanogenMod/android.git -b cm-11.0 --depth=1
+          repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune -j$(nproc)
+          
+          echo "সোর্স কোড সিঙ্ক সফল! এখন কম্পাইলেশন শুরু হচ্ছে..."
           source build/envsetup.sh
-          lunch aosp_arm-eng
+          lunch cm_arm-eng
           make -j$(nproc)
+          
