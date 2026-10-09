@@ -2,11 +2,14 @@ name: Build VANY Custom ROM
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 360  # Allow maximum 6 hours execution time without auto-kill
+    timeout-minutes: 360
 
     steps:
       - name: Checkout Repository
@@ -14,7 +17,7 @@ jobs:
 
       - name: Deep Cleanup Runner Disk Space
         run: |
-          echo "Clearing non-essential build packages to avoid disk fill-up..."
+          echo "Clearing non-essential build packages..."
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
@@ -28,12 +31,20 @@ jobs:
           docker image prune --all --force || true
           df -h
 
-      - name: Install Build Dependencies
+      - name: Install Build Dependencies & OpenJDK 8
         run: |
           sudo apt-get update
           sudo apt-get install -y bc build-essential ccache flex bison gperf libxml2-utils \
             curl zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 lib32ncurses5-dev \
-            x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev xsltproc unzip python2
+            x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev xsltproc unzip python2 \
+            openjdk-8-jdk
+
+      - name: Set Java 8 as Default JDK
+        run: |
+          sudo update-java-alternatives -s java-1.8.0-openjdk-amd64 || true
+          export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+          echo "JAVA_HOME=$JAVA_HOME" >> $GITHUB_ENV
+          echo "$JAVA_HOME/bin" >> $GITHUB_PATH
 
       - name: Setup Repo Tool
         run: |
@@ -65,6 +76,8 @@ jobs:
       - name: Configure and Target Selection
         run: |
           cd ~/rom
+          export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+          export PATH=$JAVA_HOME/bin:$PATH
           source build/envsetup.sh
           
           echo "Selecting architecture target..."
@@ -75,9 +88,11 @@ jobs:
       - name: Compile System Image
         run: |
           cd ~/rom
+          export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+          export PATH=$JAVA_HOME/bin:$PATH
           make systemimage -j$(nproc --all)
 
-      - name: Compress and Prepare Output
+      - name: Compress Output System Package
         run: |
           cd ~/rom/out/target/product/*
           if [ -f system.img ]; then
@@ -86,9 +101,20 @@ jobs:
             echo "Build failed: system.img file not found" && exit 1
           fi
 
-      - name: Upload ROM System Image
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: vany-system-image
           path: ~/vany-system.zip
           retention-days: 7
+
+      - name: Create Permanent GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: always() && hashFiles('/home/runner/vany-system.zip') != ''
+        with:
+          tag_name: "vany-os-build-${{ github.run_number }}"
+          name: "VANY OS ROM Build #${{ github.run_number }}"
+          body: "Automated Build generated for VANY OS (LineageOS 15.1 Base)."
+          files: ~/vany-system.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
