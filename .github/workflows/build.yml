@@ -6,14 +6,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+    timeout-minutes: 360  # Allow maximum 6 hours execution time without auto-kill
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Free Up Disk Space
+      - name: Deep Cleanup Runner Disk Space
         run: |
-          echo "Clearing non-essential build environments..."
+          echo "Clearing non-essential build packages to avoid disk fill-up..."
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
@@ -41,13 +42,13 @@ jobs:
           chmod a+x ~/bin/repo
           echo "$HOME/bin" >> $GITHUB_PATH
 
-      - name: Sync LineageOS Source
+      - name: Non-Interactive LineageOS Source Sync
         run: |
           mkdir -p ~/rom
           cd ~/rom
           repo init -u https://github.com/LineageOS/android.git -b cm-14.1 --git-lfs --depth=1
           
-          # Setup local manifest with safe error handling
+          # Setup safe local manifest
           mkdir -p .repo/local_manifests
           cat > .repo/local_manifests/roomservice.xml << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
@@ -56,18 +57,17 @@ jobs:
           </manifest>
           EOF
           
-          # Attempt sync with manifest, fallback to standard sync if custom repo missing
-          echo "Starting repo sync..."
+          echo "Syncing source code with interactive prompt disabled..."
+          export GIT_TERMINAL_PROMPT=0
           repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags || \
           (rm -rf .repo/local_manifests/roomservice.xml && repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags)
 
-      - name: Setup Environment and Lunch Target
+      - name: Configure and Target Selection
         run: |
           cd ~/rom
           source build/envsetup.sh
           
-          # Check and auto-select available target
-          echo "Configuring target architecture..."
+          echo "Selecting architecture target..."
           lunch lineage_vany-userdebug || \
           lunch aosp_arm64-userdebug || \
           lunch cm_arm64-userdebug
@@ -77,16 +77,16 @@ jobs:
           cd ~/rom
           make systemimage -j$(nproc --all)
 
-      - name: Compress Output Artifact
+      - name: Compress and Prepare Output
         run: |
           cd ~/rom/out/target/product/*
           if [ -f system.img ]; then
             zip -9 ~/vany-system.zip system.img
           else
-            echo "Error: system.img was not compiled successfully" && exit 1
+            echo "Build failed: system.img file not found" && exit 1
           fi
 
-      - name: Upload ROM Artifact
+      - name: Upload ROM System Image
         uses: actions/upload-artifact@v4
         with:
           name: vany-system-image
