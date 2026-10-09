@@ -22,17 +22,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             bc build-essential ccache curl flex bison gperf libxml2-utils \
-            unzip zlib1g-dev lib32z1-dev lib32ncurses-dev \
+            unzip zlib1g-dev lib32z1-dev lib32ncurses-dev repo git \
             libgl1-mesa-dev xsltproc openjdk-8-jdk python2 python2-minimal \
             libncurses6 libtinfo6 lib32ncurses6 lib32tinfo6 || true
 
           # Direct Global Symlink for Clang Toolchain (Fixes Error 127 permanently)
-          sudo ln -sf /lib/x86_64-linux-gnu/libncurses.so.6 /usr/lib/libncurses.so.5
-          sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/libtinfo.so.5
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libncurses.so.6 /usr/lib/libncurses.so.5
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/libtinfo.so.5
           sudo ln -sf /lib/x86_64-linux-gnu/libncurses.so.6 /lib/x86_64-linux-gnu/libncurses.so.5
           sudo ln -sf /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libtinfo.so.5
-          
-          # For multiarch support
           sudo ln -sf /usr/lib/x86_64-linux-gnu/libncurses.so.6 /usr/lib/x86_64-linux-gnu/libncurses.so.5
           sudo ln -sf /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5
 
@@ -43,8 +41,20 @@ jobs:
           sudo ln -sf /usr/bin/python2 /usr/bin/python
           echo "Python 2 set as default."
 
+      - name: Initialize Repo and Sync Source
+        run: |
+          mkdir -p /home/runner/rom
+          cd /home/runner/rom
+          git config --global user.name "VANY Builder"
+          git config --global user.email "builder@vany.os"
+          
+          # আপনার কাস্টম ম্যানিফেস্ট বা সোর্স অনুযায়ী রিপো ইনিট ও সিঙ্ক কমান্ড
+          # repo init -u https://github.com/LineageOS/android.git -b cm-14.1
+          # repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune -j$(nproc)
+
       - name: Run VANY ROM Build
         run: |
+          cd /home/runner/rom
           echo "Starting VANY ROM Compilation..."
           source build/envsetup.sh
           lunch aosp_arm-eng
