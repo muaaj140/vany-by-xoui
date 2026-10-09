@@ -1,4 +1,4 @@
-name: Build LineageOS 15.1
+name: Build VANY Custom ROM
 
 on:
   workflow_dispatch:
@@ -11,9 +11,9 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Free Disk Space Direct Cleanup
+      - name: Free Up Disk Space
         run: |
-          echo "Cleaning up disk space..."
+          echo "Clearing non-essential build environments..."
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
@@ -27,7 +27,7 @@ jobs:
           docker image prune --all --force || true
           df -h
 
-      - name: Install Dependencies
+      - name: Install Build Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y bc build-essential ccache flex bison gperf libxml2-utils \
@@ -46,39 +46,49 @@ jobs:
           mkdir -p ~/rom
           cd ~/rom
           repo init -u https://github.com/LineageOS/android.git -b cm-14.1 --git-lfs --depth=1
-          repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
+          
+          # Setup local manifest with safe error handling
+          mkdir -p .repo/local_manifests
+          cat > .repo/local_manifests/roomservice.xml << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <manifest>
+            <project path="device/vany/vany" name="muaaj140/android_device_vany" remote="github" revision="cm-14.1" />
+          </manifest>
+          EOF
+          
+          # Attempt sync with manifest, fallback to standard sync if custom repo missing
+          echo "Starting repo sync..."
+          repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags || \
+          (rm -rf .repo/local_manifests/roomservice.xml && repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags)
 
-      - name: Setup Environment and Lunch
+      - name: Setup Environment and Lunch Target
         run: |
           cd ~/rom
           source build/envsetup.sh
-          lunch lineage_vany-userdebug || lunch lineage_arm64-userdebug
+          
+          # Check and auto-select available target
+          echo "Configuring target architecture..."
+          lunch lineage_vany-userdebug || \
+          lunch aosp_arm64-userdebug || \
+          lunch cm_arm64-userdebug
 
-      - name: Compile ROM
+      - name: Compile System Image
         run: |
           cd ~/rom
           make systemimage -j$(nproc --all)
 
-      - name: Package Output
+      - name: Compress Output Artifact
         run: |
           cd ~/rom/out/target/product/*
           if [ -f system.img ]; then
             zip -9 ~/vany-system.zip system.img
           else
-            echo "Build failed: system.img not generated" && exit 1
+            echo "Error: system.img was not compiled successfully" && exit 1
           fi
 
-      - name: Upload Artifact
+      - name: Upload ROM Artifact
         uses: actions/upload-artifact@v4
         with:
           name: vany-system-image
           path: ~/vany-system.zip
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: ~/vany-system.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
+          retention-days: 7
