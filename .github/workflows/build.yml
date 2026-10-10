@@ -20,27 +20,28 @@ jobs:
       - name: Install KitKat Dependencies & Fixes
         run: |
           sudo apt-get update
-          # উবুন্টু ২২.০৪ এর উপযোগী প্যাকেজ লিস্ট (পুরনো ncurses বাদ দিয়ে আধুনিক প্যাকেজ রাখা হয়েছে)
           sudo apt-get install -y \
             bc build-essential ccache curl flex bison gperf libxml2-utils \
-            unzip zlib1g-dev lib32z1-dev libncurses5-dev repo git \
+            unzip zlib1g-dev lib32z1-dev libncurses5-dev git \
             libgl1-mesa-dev xsltproc openjdk-8-jdk python2 python2-minimal \
             libncurses5 libtinfo5 lib32ncurses6 lib32tinfo6 || true
-
-          # গুগল ডিপো টুলস থেকে সরাসরি অফিসিয়াল 'repo' ডাউনলোড করে বাইন্ড করা (যাতে কমান্ড মিসিং না হয়)
-          sudo mkdir -p /usr/local/bin
-          sudo curl -o /usr/local/bin/repo https://storage.googleapis.com/git-repo-downloads/repo
-          sudo chmod a+x /usr/local/bin/repo
 
           # লিগেসি সিমলিংক তৈরি
           sudo ln -sf /usr/lib/x86_64-linux-gnu/libncurses.so.6 /usr/lib/x86_64-linux-gnu/libncurses.so.5
           sudo ln -sf /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5
-          echo "ডিপেনডেন্সি এবং টুলস সফলভাবে প্রস্তুত।"
+          echo "ডিপেনডেন্সি এবং লিগেসি লাইব্রেরি প্রস্তুত।"
 
       - name: Set Up Python 2 Symlink
         run: |
           sudo ln -sf /usr/bin/python2 /usr/bin/python
           echo "পাইথন ২ সেট করা হয়েছে।"
+
+      - name: Setup Local Repo Tool & Path
+        run: |
+          mkdir -p /home/runner/bin
+          curl https://storage.googleapis.com/git-repo-downloads/repo > /home/runner/bin/repo
+          chmod a+x /home/runner/bin/repo
+          echo "/home/runner/bin" >> $GITHUB_PATH
 
       - name: Sync and Build VANY KitKat ROM
         run: |
@@ -57,4 +58,3 @@ jobs:
           source build/envsetup.sh
           lunch cm_arm-eng
           make -j$(nproc)
-          
