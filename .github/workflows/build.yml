@@ -35,7 +35,7 @@ jobs:
             gcc-multilib \
             g++-multilib \
             libc6-dev-i386 \
-            lib32ncurses6-dev \
+            lib32ncurses-dev \
             libncurses5-dev \
             x11proto-core-dev \
             libx11-dev \
@@ -46,7 +46,7 @@ jobs:
             unzip \
             fontconfig \
             python2
-          
+
           sudo ln -sf /usr/bin/python2 /usr/bin/python
 
       - name: Set JAVA_HOME for OpenJDK 8
@@ -62,19 +62,18 @@ jobs:
 
       - name: Initialize, Sync and Build ROM
         run: |
-          # ফোল্ডার তৈরি এবং সেটআপ এক ব্লকে করা হলো যাতে পাথ মিসিং না হয়
           mkdir -p /home/runner/cyanogenmod
           cd /home/runner/cyanogenmod
-          
+
           git config --global user.email "ci@example.com"
           git config --global user.name "CI Bot"
-          
+
           echo "=== Repo Init ==="
           repo init -u https://github.com/CyanogenMod/android.git -b cm-11.0 --depth=1
-          
+
           echo "=== Repo Sync ==="
           repo sync --force-sync --no-clone-bundle --jobs=4 --depth=1 2>&1 | tee sync.log
-          
+
           echo "=== Build Environment Setup & Compilation ==="
           source build/envsetup.sh
           lunch cm_emulator-eng
@@ -83,10 +82,9 @@ jobs:
       - name: Check build output
         if: always()
         run: |
-          cd /home/runner/cyanogenmod
-          if [ -d "out/target/product" ]; then
+          if [ -d "/home/runner/cyanogenmod/out/target/product" ]; then
             echo "Build artifacts generated:"
-            find out/target/product -type f -name "*.img" -o -name "*.zip" | head -20
+            find /home/runner/cyanogenmod/out/target/product -type f -name "*.img" -o -name "*.zip" | head -20
           else
             echo "No build artifacts found"
           fi
