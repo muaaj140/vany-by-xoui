@@ -9,11 +9,6 @@ on:
       - main
   workflow_dispatch:
 
-env:
-  BUILD_DIR: ${{ github.workspace }}/cyanogenmod
-  REPO_TOOL_DIR: ${{ github.workspace }}/bin
-  CCACHE_DIR: ${{ github.workspace }}/.ccache
-
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -23,18 +18,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Update system packages
+      - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y apt-transport-https ca-certificates gnupg2 software-properties-common
-
-      - name: Install legacy build dependencies
-        run: |
           sudo apt-get install -y \
+            openjdk-8-jdk \
             git-core \
             gnupg \
             flex \
             bison \
+            gperf \
             build-essential \
             zip \
             curl \
@@ -42,207 +35,77 @@ jobs:
             gcc-multilib \
             g++-multilib \
             libc6-dev-i386 \
-            lib32ncurses5-dev \
-            x11-utils \
+            lib32ncurses6-dev \
+            libncurses5-dev \
+            x11proto-core-dev \
+            libx11-dev \
             lib32z1-dev \
-            ccache \
-            libssl-dev \
-            libxml2 \
+            libgl1-mesa-dev \
             libxml2-utils \
             xsltproc \
             unzip \
             fontconfig \
-            imagemagick \
-            bc \
-            schedtool \
-            dpkg-dev \
-            libreadline-dev \
-            python-dev \
-            liblz4-tool \
-            openjdk-8-jdk
-
-      - name: Set up Java environment
-        run: |
-          sudo update-alternatives --install /usr/bin/java java /usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java 1
-          sudo update-alternatives --install /usr/bin/javac javac /usr/lib/jvm/java-8-openjdk-amd64/bin/javac 1
-          java -version
-          javac -version
-
-      - name: Install Python 2 and set as default
-        run: |
-          sudo apt-get install -y python2 python2-dev
-          sudo ln -sf /usr/bin/python2 /usr/bin/python
-          python --version
-          python2 --version
-
-      - name: Verify Python setup
-        run: |
-          which python
-          ls -la /usr/bin/python*
-          python -c "import sys; print(sys.version)"
-
-      - name: Create build directories
-        run: |
-          mkdir -p "${{ env.BUILD_DIR }}"
-          mkdir -p "${{ env.REPO_TOOL_DIR }}"
-          mkdir -p "${{ env.CCACHE_DIR }}"
-          echo "Build directory: ${{ env.BUILD_DIR }}"
-          echo "Repo tool directory: ${{ env.REPO_TOOL_DIR }}"
-
-      - name: Download and setup repo tool
-        run: |
-          cd "${{ env.REPO_TOOL_DIR }}"
-          echo "Downloading repo tool..."
-          curl -s https://storage.googleapis.com/git-repo-downloads/repo -o repo
-          chmod a+x repo
-          ls -lh repo
-          echo "Verifying repo tool..."
-          ./repo --version
-
-      - name: Add repo tool to PATH
-        run: |
-          echo "${{ env.REPO_TOOL_DIR }}" >> $GITHUB_PATH
-          echo "Added ${{ env.REPO_TOOL_DIR }} to GITHUB_PATH"
-
-      - name: Configure git for repo
-        run: |
-          git config --global user.email "build@cyanogenmod.local"
-          git config --global user.name "CyanogenMod Build"
-          git config --global color.ui false
-
-      - name: Initialize CyanogenMod repository
-        working-directory: ${{ env.BUILD_DIR }}
-        run: |
-          echo "Initializing CyanogenMod repository..."
-          repo init -u https://github.com/CyanogenMod/android.git -b cm-11.0 --depth=1
-          echo "Repository initialization completed"
-
-      - name: Sync CyanogenMod source
-        working-directory: ${{ env.BUILD_DIR }}
-        run: |
-          echo "Starting source synchronization..."
-          repo sync --force-sync --no-clone-bundle --jobs=4 --depth=1 -q
-          echo "Source synchronization completed"
-          echo "Listing directory contents:"
-          ls -la "${{ env.BUILD_DIR }}"
-
-      - name: Verify build directory structure
-        working-directory: ${{ env.BUILD_DIR }}
-        run: |
-          echo "Checking critical build files..."
-          if [ -f "build/envsetup.sh" ]; then
-            echo "✓ build/envsetup.sh found"
-          else
-            echo "✗ build/envsetup.sh NOT found"
-            find . -name "envsetup.sh" -type f 2>/dev/null | head -20
-            exit 1
-          fi
+            python2
           
-          if [ -d "device" ]; then
-            echo "✓ device directory found"
-            ls -la device/ | head -10
-          else
-            echo "✗ device directory NOT found"
-            exit 1
-          fi
+          sudo ln -sf /usr/bin/python2 /usr/bin/python
 
-      - name: Set up build environment and lunch target
-        working-directory: ${{ env.BUILD_DIR }}
+      - name: Set JAVA_HOME for OpenJDK 8
         run: |
-          echo "Setting up build environment..."
-          source build/envsetup.sh
-          echo "Selecting lunch target..."
-          lunch cm_emulator-eng
-          echo "Build environment setup completed"
+          echo "JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64" >> $GITHUB_ENV
 
-      - name: Build CyanogenMod (compilation)
-        working-directory: ${{ env.BUILD_DIR }}
+      - name: Install repo tool
         run: |
-          echo "Starting CyanogenMod compilation..."
-          echo "Number of available processors: $(nproc)"
+          mkdir -p ~/bin
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          chmod a+x ~/bin/repo
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Initialize, Sync and Build ROM
+        run: |
+          # ফোল্ডার তৈরি এবং সেটআপ এক ব্লকে করা হলো যাতে পাথ মিসিং না হয়
+          mkdir -p /home/runner/cyanogenmod
+          cd /home/runner/cyanogenmod
+          
+          git config --global user.email "ci@example.com"
+          git config --global user.name "CI Bot"
+          
+          echo "=== Repo Init ==="
+          repo init -u https://github.com/CyanogenMod/android.git -b cm-11.0 --depth=1
+          
+          echo "=== Repo Sync ==="
+          repo sync --force-sync --no-clone-bundle --jobs=4 --depth=1 2>&1 | tee sync.log
+          
+          echo "=== Build Environment Setup & Compilation ==="
           source build/envsetup.sh
           lunch cm_emulator-eng
           make -j$(nproc) 2>&1 | tee build.log
-          echo "Compilation completed"
 
-      - name: Check build artifacts
-        working-directory: ${{ env.BUILD_DIR }}
+      - name: Check build output
+        if: always()
         run: |
-          echo "Searching for build artifacts..."
+          cd /home/runner/cyanogenmod
           if [ -d "out/target/product" ]; then
-            echo "✓ out/target/product directory found"
-            find out/target/product -type f \( -name "*.zip" -o -name "*.img" \) 2>/dev/null | head -20
+            echo "Build artifacts generated:"
+            find out/target/product -type f -name "*.img" -o -name "*.zip" | head -20
           else
-            echo "⚠ out/target/product directory not found"
+            echo "No build artifacts found"
           fi
-          
-          # List main output directory
-          if [ -d "out" ]; then
-            echo "Contents of out directory:"
-            ls -lah out/ | head -20
-          fi
-
-      - name: Collect build artifacts
-        if: success() || failure()
-        working-directory: ${{ env.BUILD_DIR }}
-        run: |
-          mkdir -p "${{ env.BUILD_DIR }}/artifacts"
-          
-          # Collect zip files
-          if find out/target/product -name "*.zip" 2>/dev/null | grep -q .; then
-            echo "Copying zip artifacts..."
-            find out/target/product -name "*.zip" -type f 2>/dev/null -exec cp {} "${{ env.BUILD_DIR }}/artifacts/" \;
-          fi
-          
-          # Collect image files
-          if find out/target/product -name "*.img" 2>/dev/null | grep -q .; then
-            echo "Copying image artifacts..."
-            find out/target/product -name "*.img" -type f 2>/dev/null -exec cp {} "${{ env.BUILD_DIR }}/artifacts/" \;
-          fi
-          
-          # Copy build log
-          if [ -f "build.log" ]; then
-            echo "Copying build log..."
-            cp build.log "${{ env.BUILD_DIR }}/artifacts/"
-          fi
-          
-          # List collected artifacts
-          echo "Collected artifacts:"
-          ls -lah "${{ env.BUILD_DIR }}/artifacts/" || echo "No artifacts collected"
 
       - name: Upload build artifacts
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: cyanogenmod-11-build-artifacts
-          path: ${{ env.BUILD_DIR }}/artifacts/
-          retention-days: 30
-          if-no-files-found: warn
+          name: cyanogenmod-build
+          path: /home/runner/cyanogenmod/out/target/product/
+          retention-days: 7
 
-      - name: Upload build log
+      - name: Upload build logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cyanogenmod-11-build-log
-          path: ${{ env.BUILD_DIR }}/build.log
-          retention-days: 30
-          if-no-files-found: warn
-
-      - name: Build summary
-        if: always()
-        working-directory: ${{ env.BUILD_DIR }}
-        run: |
-          echo "=== CyanogenMod 11.0 Build Summary ==="
-          echo "Build Status: $([ $? -eq 0 ] && echo 'SUCCESS' || echo 'FAILED')"
-          echo "Build Date: $(date)"
-          echo "Build Directory: ${{ env.BUILD_DIR }}"
-          if [ -f "build.log" ]; then
-            echo "Build log size: $(du -h build.log | cut -f1)"
-            echo "Last 20 lines of build log:"
-            tail -20 build.log
-          fi
-          if [ -d "${{ env.BUILD_DIR }}/artifacts" ]; then
-            echo "Artifacts:"
-            ls -lah "${{ env.BUILD_DIR }}/artifacts/"
-          fi
+          name: build-logs
+          path: |
+            /home/runner/cyanogenmod/build.log
+            /home/runner/cyanogenmod/sync.log
+          retention-days: 7
           
