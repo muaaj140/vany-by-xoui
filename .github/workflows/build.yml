@@ -35,7 +35,8 @@ jobs:
             gcc-multilib \
             g++-multilib \
             libc6-dev-i386 \
-            lib32ncurses5-dev \
+            lib32ncurses6-dev \
+            libncurses5-dev \
             x11proto-core-dev \
             libx11-dev \
             lib32z1-dev \
@@ -43,7 +44,9 @@ jobs:
             libxml2-utils \
             xsltproc \
             unzip \
-            fontconfig
+            fontconfig \
+            python2 \
+            python-is-python2
 
       - name: Set JAVA_HOME for OpenJDK 8
         run: |
@@ -76,19 +79,6 @@ jobs:
         run: |
           repo sync --force-sync --no-clone-bundle --jobs=4 --depth=1 2>&1 | tee sync.log
           echo "Sync completed successfully"
-
-      - name: Setup build environment
-        working-directory: ~/cyanogenmod
-        run: |
-          source build/envsetup.sh
-          env | grep -i android || echo "Environment setup in progress"
-
-      - name: Select build target
-        working-directory: ~/cyanogenmod
-        run: |
-          source build/envsetup.sh
-          lunch cm_emulator-eng
-          echo "Build target selected: cm_emulator-eng"
 
       - name: Build CyanogenMod
         working-directory: ~/cyanogenmod
