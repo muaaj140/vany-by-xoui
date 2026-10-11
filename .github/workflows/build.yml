@@ -1,13 +1,129 @@
-- name: Sync and Build VANY KitKat ROM
+name: CyanogenMod 11.0 Build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 480
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
         run: |
-          mkdir -p /home/runner/kitkat_rom
-          cd /home/runner/kitkat_rom
-          git config --global user.name "VANY KitKat Builder"
-          git config --global user.email "kitkat@vany.os"
-          
-          echo "সোর্স কোড ইনিশিয়ালাইজ ও সিঙ্ক সফল!"
-          
-          echo "এখন কম্পাইলেশন শুরু হচ্ছে..."
+          sudo apt-get update
+          sudo apt-get install -y \
+            openjdk-8-jdk \
+            git-core \
+            gnupg \
+            flex \
+            bison \
+            gperf \
+            build-essential \
+            zip \
+            curl \
+            zlib1g-dev \
+            gcc-multilib \
+            g++-multilib \
+            libc6-dev-i386 \
+            lib32ncurses5-dev \
+            x11proto-core-dev \
+            libx11-dev \
+            lib32z1-dev \
+            libgl1-mesa-dev \
+            libxml2-utils \
+            xsltproc \
+            unzip \
+            fontconfig
+
+      - name: Set JAVA_HOME for OpenJDK 8
+        run: |
+          echo "JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64" >> $GITHUB_ENV
+          export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+          $JAVA_HOME/bin/java -version
+
+      - name: Install repo tool
+        run: |
+          mkdir -p ~/bin
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          chmod a+x ~/bin/repo
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Create build directory
+        run: |
+          mkdir -p ~/cyanogenmod
+          cd ~/cyanogenmod
+          pwd
+
+      - name: Initialize repo
+        working-directory: ~/cyanogenmod
+        run: |
+          git config --global user.email "ci@example.com"
+          git config --global user.name "CI Bot"
+          repo init -u https://github.com/CyanogenMod/android.git -b cm-11.0 --depth=1
+
+      - name: Sync source code
+        working-directory: ~/cyanogenmod
+        run: |
+          repo sync --force-sync --no-clone-bundle --jobs=4 --depth=1 2>&1 | tee sync.log
+          echo "Sync completed successfully"
+
+      - name: Setup build environment
+        working-directory: ~/cyanogenmod
+        run: |
+          source build/envsetup.sh
+          env | grep -i android || echo "Environment setup in progress"
+
+      - name: Select build target
+        working-directory: ~/cyanogenmod
+        run: |
           source build/envsetup.sh
           lunch cm_emulator-eng
-          make -j$(nproc)
+          echo "Build target selected: cm_emulator-eng"
+
+      - name: Build CyanogenMod
+        working-directory: ~/cyanogenmod
+        run: |
+          source build/envsetup.sh
+          lunch cm_emulator-eng
+          make -j$(nproc) 2>&1 | tee build.log
+          echo "Build completed"
+
+      - name: Check build output
+        working-directory: ~/cyanogenmod
+        if: always()
+        run: |
+          if [ -d "out/target/product" ]; then
+            echo "Build artifacts generated:"
+            find out/target/product -type f -name "*.img" -o -name "*.zip" | head -20
+          else
+            echo "No build artifacts found"
+          fi
+
+      - name: Upload build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyanogenmod-build
+          path: ~/cyanogenmod/out/target/product/
+          retention-days: 7
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            ~/cyanogenmod/build.log
+            ~/cyanogenmod/sync.log
+          retention-days: 7
+          
