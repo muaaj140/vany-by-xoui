@@ -21,13 +21,7 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-
-    - name: Accept Android SDK Licenses
-      run: yes | sdkmanager --licenses || true
-
-    - name: Build Debug APK with standard Gradle
+    - name: Build Debug APK with Gradle
       uses: gradle/gradle-build-action@v3
       with:
         arguments: assembleDebug
