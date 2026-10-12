@@ -60,7 +60,7 @@ jobs:
           chmod a+x ~/bin/repo
           echo "$HOME/bin" >> $GITHUB_PATH
 
-      - name: Initialize, Sync and Patch ROM
+      - name: Initialize, Sync and Build ROM
         run: |
           mkdir -p /home/runner/cyanogenmod
           cd /home/runner/cyanogenmod
@@ -74,19 +74,12 @@ jobs:
           echo "=== Repo Sync ==="
           repo sync --force-sync --no-clone-bundle --jobs=4 2>&1 | tee sync.log
 
-          echo "=== Applying Custom Patches (VA Apps, Bootloader, Root & Network Fix) ==="
-          # এখানে ডেভেলপার অপশন, ক্লাউড সিকিউরিটি পিন (৪ ডিজিট) এবং লেগাসি নেটওয়ার্ক প্যাচ যুক্ত করার লজিক এক্সিকিউট হবে
-          cd frameworks/base || true
-          # লিগ্যাসি নেটওয়ার্ক সকেট বাইপাস প্যাচ প্লেসমেন্ট
-          
-          cd /home/runner/cyanogenmod
-          echo "প্যাচ অ্যাপ্লাই সম্পন্ন হয়েছে।"
-
-      - name: Build Environment Setup & Compilation
-        run: |
-          cd /home/runner/cyanogenmod
+          echo "=== Build Environment Setup & Compilation ==="
           source build/envsetup.sh
-          lunch cm_emulator-eng
+          
+          # cm_emulator এর পরিবর্তে জেনেরিক বা ফুল ভ্যালিড লাঞ্চ টার্গেট ব্যবহার করা হলো
+          lunch full_arm-eng
+          
           make -j$(nproc) 2>&1 | tee build.log
 
       - name: Check build output
